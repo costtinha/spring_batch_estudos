@@ -10,9 +10,8 @@ import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
 import org.springframework.batch.item.ItemProcessor;
 import org.springframework.batch.item.ItemWriter;
-import org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider;
-import org.springframework.batch.item.database.JdbcBatchItemWriter;
-import org.springframework.batch.item.database.JdbcCursorItemReader;
+import org.springframework.batch.item.database.*;
+import org.springframework.batch.item.database.support.PostgresPagingQueryProvider;
 import org.springframework.batch.item.file.FlatFileItemReader;
 import org.springframework.batch.item.file.FlatFileItemWriter;
 import org.springframework.batch.item.file.mapping.BeanWrapperFieldSetMapper;
@@ -38,6 +37,8 @@ import java.io.File;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.Statement;
+import java.util.HashMap;
+import java.util.Map;
 
 @Configuration
 public class UserJobConfig {
@@ -166,12 +167,22 @@ public class UserJobConfig {
     // Daqui para frente beans sobre processo de exportação
 
     @Bean
-    public JdbcCursorItemReader<User> exportReader(DataSource dataSource){
-       JdbcCursorItemReader<User> reader = new JdbcCursorItemReader<>();
+    public JdbcPagingItemReader<User> exportReader(DataSource dataSource){
+       JdbcPagingItemReader<User> reader = new JdbcPagingItemReader<>();
        reader.setDataSource(dataSource);
-       reader.setSql("SELECT userId, name, age, email FROM user_table");
        reader.setRowMapper(new BeanPropertyRowMapper<>(User.class));
        reader.setFetchSize(1000);
+       reader.setPageSize(1000);
+
+        PostgresPagingQueryProvider queryProvider = new PostgresPagingQueryProvider();
+        queryProvider.setSelectClause("userId, name, age, email");
+        queryProvider.setFromClause("user_Table");
+
+        Map<String, Order> sortKeys = new HashMap<>();
+        sortKeys.put("userId",Order.ASCENDING);
+        queryProvider.setSortKeys(sortKeys);
+
+        reader.setQueryProvider(queryProvider);
        return reader;
 
     }
