@@ -22,8 +22,10 @@ spring:
 
 logging:
   level:
+    root: INFO
     org.springframework.batch: TRACE
     org.springframework.jdbc: TRACE
     org.springframework.data.redis: DEBUG
     org.hibernate.SQL: DEBUG
     org.hibernate.orm.jdbc.bind: TRACE
+    com.example.Spring.batch.Training: TRACE

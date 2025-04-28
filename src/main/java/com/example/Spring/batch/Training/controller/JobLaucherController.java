@@ -1,5 +1,7 @@
 package com.example.Spring.batch.Training.controller;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.JobParameter;
 import org.springframework.batch.core.JobParameters;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/job")
 public class JobLaucherController {
+    private final Logger log = LoggerFactory.getLogger(JobLaucherController.class);
     private final JobLauncher jobLauncher;
     private final Job importUserCSVJob;
     private final Job exportUserCSVJob;
@@ -36,6 +39,7 @@ public class JobLaucherController {
             jobLauncher.run(importUserCSVJob,params);
             return "Job iniciado com sucesso";
         } catch (Exception e){
+            log.error("Erro ao iniciar importUserCSVJob", e);
             e.printStackTrace();
             return "Erro ao iniciar job" + e.getMessage();
         }
@@ -50,6 +54,7 @@ public class JobLaucherController {
             jobLauncher.run(exportUserCSVJob,params);
             return "Job de exportação iniciado";
         } catch (Exception e){
+            log.error("Erro ao iniciar exportUserCSVJob",e);
             e.printStackTrace();
             return "Erro ao iniciar job" + e.getMessage();
         }
