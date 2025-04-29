@@ -9,7 +9,7 @@ services:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/postgres
       - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=15940898
-      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=create-drop
       - SPRING_BATCH_JDBC_INITIALIZE_SCHEMA=always
       - SPRING_BATCH_JOB_ENABLED=false
       - SPRING_REDIS_HOST=redis
@@ -23,6 +23,8 @@ services:
         condition: service_started
     networks:
       - batch-network
+    volumes:
+      - ./src/main/resources/user_10k.csv:/app/user_10k.csv
 
   db:
     image: postgres:16

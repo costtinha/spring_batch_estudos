@@ -19,6 +19,7 @@ public class BatchConfig {
     @Autowired
     private DataSource dataSource;
 
+
     @Bean
     public JobRepository jobRepository() throws Exception {
         JobRepositoryFactoryBean factory = new JobRepositoryFactoryBean();
@@ -31,16 +32,19 @@ public class BatchConfig {
         return factory.getObject();
     }
 
+
     @Bean
     public DataSourceInitializer dataSourceInitializer() {
         ResourceDatabasePopulator populator = new ResourceDatabasePopulator();
         populator.addScript(new ClassPathResource("org/springframework/batch/core/schema-postgresql.sql"));
-        populator.setContinueOnError(false);
-        populator.setIgnoreFailedDrops(false);
+        populator.setContinueOnError(true); // Ignorar erros como "tabela já existe"
+        populator.setIgnoreFailedDrops(true);
 
         DataSourceInitializer initializer = new DataSourceInitializer();
         initializer.setDataSource(dataSource);
         initializer.setDatabasePopulator(populator);
         return initializer;
     }
+
+
 }

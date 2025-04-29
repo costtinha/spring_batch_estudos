@@ -28,8 +28,8 @@ public class RedisConfigCheck {
     @Bean
     public LettuceConnectionFactory redisConnectionFactory() {
         RedisStandaloneConfiguration config = new RedisStandaloneConfiguration();
-        config.setHostName("redis");  // Forçar explicitamente
-        config.setPort(6379);
+        config.setHostName(redisHost);
+        config.setPort(Integer.parseInt(redisPort));
         return new LettuceConnectionFactory(config);
     }
 

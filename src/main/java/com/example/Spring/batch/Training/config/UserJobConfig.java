@@ -74,20 +74,29 @@ public class UserJobConfig {
 
 
     @Bean
-    public SynchronizedItemStreamReader<UserCSV> reader(){
+    public SynchronizedItemStreamReader<UserCSV> reader() {
         FlatFileItemReader<UserCSV> reader = new FlatFileItemReader<>();
-        reader.setResource(new ClassPathResource("user_10k.csv"));
-        reader.setLinesToSkip(1);
-        reader.setLineMapper( new DefaultLineMapper<>() {{
-            setLineTokenizer(new DelimitedLineTokenizer() {
-                {
+        try {
+            FileSystemResource resource = new FileSystemResource("/app/user_10k.csv");
+            if (!resource.exists()) {
+                log.error("File /app/user_10k.csv not found");
+                throw new IllegalStateException("File /app/user_10k.csv not found");
+            }
+            reader.setResource(resource);
+            reader.setLinesToSkip(1);
+            reader.setLineMapper(new DefaultLineMapper<>() {{
+                setLineTokenizer(new DelimitedLineTokenizer() {{
                     setNames("firstName", "lastName", "age", "email");
                 }});
-            setFieldSetMapper( new BeanWrapperFieldSetMapper<>() {{
-                setTargetType(UserCSV.class);
+                setFieldSetMapper(new BeanWrapperFieldSetMapper<>() {{
+                    setTargetType(UserCSV.class);
+                }});
             }});
-            }});
-        log.info("Arquivo de leitura inicializado e pronto para o user_10k.csv");
+            log.info("Initialized reader for /app/user_10k.csv");
+        } catch (Exception e) {
+            log.error("Failed to initialize reader for /app/user_10k.csv", e);
+            throw new RuntimeException("Reader initialization failed", e);
+        }
         SynchronizedItemStreamReader<UserCSV> finalReader = new SynchronizedItemStreamReader<>();
         finalReader.setDelegate(reader);
         return finalReader;
