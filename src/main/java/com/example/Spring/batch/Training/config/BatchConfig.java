@@ -45,6 +45,4 @@ public class BatchConfig {
         initializer.setDatabasePopulator(populator);
         return initializer;
     }
-
-
 }

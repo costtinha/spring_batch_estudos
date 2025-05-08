@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
+import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.partition.support.Partitioner;
 import org.springframework.batch.core.repository.JobRepository;
@@ -15,9 +16,11 @@ import org.springframework.batch.item.ExecutionContext;
 import org.springframework.batch.item.ItemProcessor;
 import org.springframework.batch.item.ItemWriter;
 import org.springframework.batch.item.database.*;
+import org.springframework.batch.item.database.builder.JdbcPagingItemReaderBuilder;
 import org.springframework.batch.item.database.support.PostgresPagingQueryProvider;
 import org.springframework.batch.item.file.FlatFileItemReader;
 import org.springframework.batch.item.file.FlatFileItemWriter;
+import org.springframework.batch.item.file.builder.FlatFileItemWriterBuilder;
 import org.springframework.batch.item.file.mapping.BeanWrapperFieldSetMapper;
 import org.springframework.batch.item.file.mapping.DefaultLineMapper;
 import org.springframework.batch.item.file.transform.BeanWrapperFieldExtractor;
@@ -26,9 +29,11 @@ import org.springframework.batch.item.file.transform.DelimitedLineTokenizer;
 import org.springframework.batch.item.support.SynchronizedItemStreamReader;
 import org.springframework.batch.repeat.RepeatStatus;
 // import org.springframework.boot.task.ThreadPoolTaskExecutorBuilder;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.io.ClassPathResource;
+// import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.jdbc.core.BeanPropertyRowMapper;
@@ -65,6 +70,7 @@ public class UserJobConfig {
        executor.setQueueCapacity(50);
        executor.setThreadNamePrefix("Batch-");
        executor.setWaitForTasksToCompleteOnShutdown(true);
+       executor.setAwaitTerminationSeconds(60);
        executor.initialize();
        return executor;
    }
@@ -188,41 +194,82 @@ public class UserJobConfig {
     // Daqui para frente beans sobre processo de exportação
 
     @Bean
-    public JdbcPagingItemReader<User> exportReader(DataSource dataSource){
-       JdbcPagingItemReader<User> reader = new JdbcPagingItemReader<>();
-       reader.setDataSource(dataSource);
-       reader.setRowMapper(new BeanPropertyRowMapper<>(User.class));
-       reader.setFetchSize(1000);
-       reader.setPageSize(1000);
+    @StepScope
+    public JdbcPagingItemReader<User> exportReader(DataSource dataSource, @Value("#{stepExecutionContext['minId']}") Integer minId,
+                                                   @Value("#{stepExecutionContext['maxId']}") Integer maxId){
 
+        log.info("Configuring JdbcPagingItemReader with minId={}, maxId={}", minId, maxId);
         PostgresPagingQueryProvider queryProvider = new PostgresPagingQueryProvider();
-        queryProvider.setSelectClause("user_id, name, age, email");
-        queryProvider.setFromClause("user_table");
-        queryProvider.setWhereClause("user_id >= :minId AND userId <= :maxId");
+        queryProvider.setSelectClause("SELECT user_id, name, age, email");
+        queryProvider.setFromClause("FROM user_table");
+        queryProvider.setWhereClause("WHERE user_id >= :minId AND user_id <= :maxId");
 
         Map<String, Order> sortKeys = new HashMap<>();
         sortKeys.put("user_id",Order.ASCENDING);
         queryProvider.setSortKeys(sortKeys);
 
-        reader.setQueryProvider(queryProvider);
+        Map<String,Object> parameterValues = new HashMap<>();
+        parameterValues.put("minId",minId);
+        parameterValues.put("maxId",maxId);
 
-        return reader;
+
+
+        /*
+         log.debug("Query provider: selectClause={}, fromClause={}, whereClause={}, sortKeys={}",
+                queryProvider.getSelectClause(), queryProvider.getFromClause(),
+                queryProvider.getWhereClause(), queryProvider.getSortKeys());
+
+         */
+
+        JdbcPagingItemReader<User> reader = new JdbcPagingItemReaderBuilder<User>()
+                .name("exportReader")
+                .dataSource(dataSource)
+                .queryProvider(queryProvider)
+                .parameterValues(parameterValues)
+                .pageSize(1000)
+                .fetchSize(1000)
+                .rowMapper(new BeanPropertyRowMapper<>(User.class))
+                .build();
+
+            try {
+                reader.afterPropertiesSet();
+                log.debug("Generated SQL query: {}", queryProvider.generateFirstPageQuery(1000));
+            } catch (Exception e) {
+                log.error("Failed to initialize JdbcPagingItemReader", e);
+                throw new RuntimeException("Reader initialization failed", e);
+            }
+
+            return reader;
+
+
 
     }
 
 
     @Bean
-    public FlatFileItemWriter<User> exportWriter() throws IOException {
-        FlatFileItemWriter<User> exportWriter = new FlatFileItemWriter<>();
-        exportWriter.setResource(new FileSystemResource("output/users_export_${partitionName}.csv"));
-        exportWriter.setHeaderCallback(writer -> writer.write("userId,name,age,email"));
-        exportWriter.setLineAggregator(new DelimitedLineAggregator<>(){{
-            setDelimiter(",");
-            setFieldExtractor(new BeanWrapperFieldExtractor<>(){{
-                setNames(new String[]{"userId","name","age","email"});
-            }});
-        }});
-        return exportWriter;
+    @StepScope
+    public FlatFileItemWriter<User> exportWriter(@Value("#{stepExecutionContext['partitionName']}") String partitionName){
+       log.info("Creating a writer for partition: {}",partitionName);
+       File outputDir = new File("output");
+        if(!outputDir.exists()){
+            outputDir.mkdirs();
+            log.info("Output directory created: {}", outputDir.getAbsolutePath());
+        }
+
+        String outputFileName = String.format("output/users_export_%s.csv",partitionName);
+        log.info("Setting writer resource to : {}",outputFileName);
+
+        return new FlatFileItemWriterBuilder<User>()
+                .name("userFileWriter")
+                .resource(new FileSystemResource(outputFileName))
+                .headerCallback(writer -> writer.write("userId,name,age,email"))
+                .lineAggregator(new DelimitedLineAggregator<User>(){{
+                    setDelimiter(",");
+                    setFieldExtractor(new BeanWrapperFieldExtractor<User>() {{
+                        setNames(new String[]{"userId","name","age","email"});
+                    }});
+                }})
+                .build();
 
     }
 
@@ -238,16 +285,17 @@ public class UserJobConfig {
     public Partitioner userPartitioner(DataSource dataSource){
        return gridSize -> {
            Map<String, ExecutionContext> partitions = new HashMap<>();
-           long minId = getMinUserId(dataSource);
-           long maxId = getMaxUserId(dataSource);
-           long targetSize = (maxId - minId) / gridSize + 1;
+           int minId = getMinUserId(dataSource);
+           int maxId = getMaxUserId(dataSource);
+           int targetSize = (maxId - minId + 1) / gridSize;
+           log.info("Partition made: minId={}, maxId={}, targetSize={}, gridSize={}",minId,maxId,targetSize,gridSize);
 
            for (int i = 0; i < gridSize; i++){
                ExecutionContext context = new ExecutionContext();
-               long partitionMinId = minId + i * targetSize;
-               long partitionMaxId = Math.min(partitionMinId + targetSize - 1,maxId);
-               context.putLong("minId", partitionMinId);
-               context.putLong("maxId", partitionMaxId);
+               int partitionMinId = minId + i * targetSize;
+               int partitionMaxId = Math.min(partitionMinId + targetSize - 1,maxId);
+               context.putInt("minId", partitionMinId);
+               context.putInt("maxId", partitionMaxId);
                context.putString("partitionName","partition" +i);
                partitions.put("partition" + i, context);
                log.info("Created partition {}: minId ={}, maxId={}",i,partitionMinId,partitionMaxId);
@@ -259,15 +307,12 @@ public class UserJobConfig {
     @Bean
     public Step slaveStep(JobRepository jobRepository,
                           PlatformTransactionManager transactionManager,
-                          FlatFileItemWriter<User> exportWriter,
-                          JdbcPagingItemReader<User> exportReader,
                           TaskExecutor taskExecutor){
        return new StepBuilder("slaveStep",jobRepository)
-               .<User,User>chunk(1000,transactionManager)
-               .reader(exportReader)
-               .writer(exportWriter)
+               .<User,User>chunk(5000,transactionManager)
+               .reader(exportReader(null,null,null))
+               .writer(exportWriter(null))
                .taskExecutor(taskExecutor)
-               .listener(new ParameterSettingListener(exportReader))
                .build();
     }
 
@@ -281,7 +326,7 @@ public class UserJobConfig {
                .partitioner("slaveStep", userPartitioner)
                .step(slaveStep)
                .taskExecutor(taskExecutor)
-               .gridSize(4)
+               .gridSize(1)
                .build();
     }
 
@@ -319,12 +364,12 @@ public class UserJobConfig {
 
 
 
-    private long getMaxUserId(DataSource dataSource){
+    private Integer getMaxUserId(DataSource dataSource){
        try(Connection connection = dataSource.getConnection();
        Statement statement = connection.createStatement();
        ResultSet resultSet = statement.executeQuery("SELECT MAX(user_id) FROM user_table")) {
            if (resultSet.next()){
-               return resultSet.getLong(1);
+               return resultSet.getInt(1);
            }
        } catch (SQLException e){
            throw new RuntimeException("Failed to get max userId ",e );
@@ -333,12 +378,12 @@ public class UserJobConfig {
     }
 
 
-    private long getMinUserId(DataSource dataSource){
+    private Integer getMinUserId(DataSource dataSource){
        try(Connection connection = dataSource.getConnection();
        Statement statement = connection.createStatement();
            ResultSet resultSet = statement.executeQuery("SELECT MIN(user_id) FROM user_table")) {
            if (resultSet.next()) {
-               return resultSet.getLong(1);
+               return resultSet.getInt(1);
            }
        } catch (SQLException e){
            throw new RuntimeException("Failed to get min userId",e);
