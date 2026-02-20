@@ -17,7 +17,6 @@ O foco é demonstrar processamento batch eficiente, com paralelismo e gerenciame
 - [Exemplos de Requisições](#-exemplos-de-requisições)
 - [Estrutura do Projeto](#-estrutura-do-projeto)
 - [Decisões & Aprendizados](#-decisões--aprendizados)
-- [Playground / Interface GraphQL](#-playground--interface-graphql)
 - [Licença](#-licença)
 
 ---
